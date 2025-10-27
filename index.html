@@ -11,7 +11,7 @@
       position:absolute; top:10px; left:10px; z-index:10;
       background:rgba(255,255,255,.95); padding:10px 12px; border-radius:12px;
       font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 420px;
+      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 440px;
     }
     .row { display:flex; gap:6px; margin-top:6px; }
     .row > * { flex:1; }
@@ -23,22 +23,28 @@
 <div id="map"></div>
 
 <div class="panel">
-  <div class="small"><strong>PMTiles URL</strong> (remote or local)</div>
+  <div class="small"><strong>PMTiles URL</strong></div>
   <input id="pmurl" type="text"
          value="https://pub-8df04077f4f24606b5b7907f35b3d396.r2.dev/A020102.pmtiles" />
+
   <div class="row">
     <div>
       <div class="small">Source-layer</div>
       <input id="sourcelayer" type="text" value="a020102"/>
     </div>
     <div>
-      <div class="small">Extrusion attribute</div>
-      <input id="heightAttr" type="text" value="height" />
+      <div class="small">Base attribute</div>
+      <input id="baseAttr" type="text" value="z_min" />
+    </div>
+    <div>
+      <div class="small">Top attribute</div>
+      <input id="topAttr" type="text" value="z_max" />
     </div>
   </div>
+
   <div class="row">
     <div>
-      <div class="small">Base color</div>
+      <div class="small">Color</div>
       <input id="color" type="color" value="#6cb7ff"/>
     </div>
     <div>
@@ -46,10 +52,13 @@
       <input id="opacity" type="number" min="0" max="1" step="0.05" value="0.9"/>
     </div>
   </div>
+
   <div class="row">
-    <button id="loadBtn">Load PMTiles</button>
+    <button id="loadBtn">Absolute Placement</button>
+    <button id="relativeBtn">Relative Height</button>
     <button id="flyBtn">Fly to Bounds</button>
   </div>
+
   <div class="small">Basemap: © OpenStreetMap contributors</div>
 </div>
 
@@ -66,7 +75,6 @@
       version: 8,
       glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
-        // Simple, free OSM raster basemap
         osm: {
           type: 'raster',
           tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
@@ -84,25 +92,35 @@
     bearing: -20
   });
 
-  function addVectorLayer(pmtilesUrl, sourceLayer, heightAttr, color, opacity) {
+  function addVectorLayer(pmtilesUrl, sourceLayer, baseAttr, topAttr, color, opacity, useRelative=false) {
     const sourceId = 'pm-src';
     const layerId = 'pm-3d';
 
-    // Remove old
+    // Remove old layer/source
     if (map.getLayer(layerId)) map.removeLayer(layerId);
     if (map.getSource(sourceId)) map.removeSource(sourceId);
 
-    // Attach PMTiles object to protocol cache
     const p = new pmtiles.PMTiles(pmtilesUrl);
     protocol.add(p);
 
-    // Vector source via pmtiles://
     map.addSource(sourceId, {
       type: 'vector',
       url: `pmtiles://${pmtilesUrl}`
     });
 
-    // 3D extrusion layer
+    const baseExpr = useRelative
+      ? 0
+      : ['coalesce', ['to-number', ['get', baseAttr]], 0];
+
+    const heightExpr = useRelative
+      ? ['max', 0,
+          ['-',
+            ['coalesce', ['to-number', ['get', topAttr]], 0],
+            ['coalesce', ['to-number', ['get', baseAttr]], 0]
+          ]
+        ]
+      : ['coalesce', ['to-number', ['get', topAttr]], 0];
+
     map.addLayer({
       id: layerId,
       type: 'fill-extrusion',
@@ -110,12 +128,13 @@
       'source-layer': sourceLayer,
       paint: {
         'fill-extrusion-color': color,
-        'fill-extrusion-height': ['coalesce', ['to-number', ['get', heightAttr]], 0],
+        'fill-extrusion-base': baseExpr,
+        'fill-extrusion-height': heightExpr,
         'fill-extrusion-opacity': Number(opacity)
       }
     });
 
-    // Fit to PMTiles bounds
+    // Fit to bounds
     p.getHeader().then(h => {
       if (h && h.minLon !== undefined) {
         map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 40, duration: 800 });
@@ -123,20 +142,41 @@
     }).catch(() => {});
   }
 
-  // UI hooks
+  // UI
+  const pmurlEl = document.getElementById('pmurl');
+  const sourcelayerEl = document.getElementById('sourcelayer');
+  const baseAttrEl = document.getElementById('baseAttr');
+  const topAttrEl = document.getElementById('topAttr');
+  const colorEl = document.getElementById('color');
+  const opacityEl = document.getElementById('opacity');
+
   document.getElementById('loadBtn').onclick = () => {
     addVectorLayer(
-      document.getElementById('pmurl').value.trim(),
-      document.getElementById('sourcelayer').value.trim(),
-      document.getElementById('heightAttr').value.trim(),
-      document.getElementById('color').value,
-      document.getElementById('opacity').value
+      pmurlEl.value.trim(),
+      sourcelayerEl.value.trim(),
+      baseAttrEl.value.trim(),
+      topAttrEl.value.trim(),
+      colorEl.value,
+      opacityEl.value,
+      false // absolute mode
+    );
+  };
+
+  document.getElementById('relativeBtn').onclick = () => {
+    addVectorLayer(
+      pmurlEl.value.trim(),
+      sourcelayerEl.value.trim(),
+      baseAttrEl.value.trim(),
+      topAttrEl.value.trim(),
+      colorEl.value,
+      opacityEl.value,
+      true // relative mode
     );
   };
 
   document.getElementById('flyBtn').onclick = async () => {
     try {
-      const p = new pmtiles.PMTiles(document.getElementById('pmurl').value.trim());
+      const p = new pmtiles.PMTiles(pmurlEl.value.trim());
       const h = await p.getHeader();
       if (h && h.minLon !== undefined) {
         map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 40, duration: 800 });
@@ -144,13 +184,15 @@
     } catch (e) {}
   };
 
-  // Auto-load defaults
+  // Auto-load defaults in absolute mode
   addVectorLayer(
-    document.getElementById('pmurl').value,
-    document.getElementById('sourcelayer').value,
-    document.getElementById('heightAttr').value,
-    document.getElementById('color').value,
-    document.getElementById('opacity').value
+    pmurlEl.value,
+    sourcelayerEl.value,
+    baseAttrEl.value,
+    topAttrEl.value,
+    colorEl.value,
+    opacityEl.value,
+    false
   );
 </script>
 </body>
