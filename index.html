@@ -11,7 +11,7 @@
       position:absolute; top:10px; left:10px; z-index:10;
       background:rgba(255,255,255,.95); padding:10px 12px; border-radius:12px;
       font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 440px;
+      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 420px;
     }
     .row { display:flex; gap:6px; margin-top:6px; }
     .row > * { flex:1; }
@@ -33,12 +33,12 @@
       <input id="sourcelayer" type="text" value="a020102"/>
     </div>
     <div>
-      <div class="small">Base attribute</div>
-      <input id="baseAttr" type="text" value="z_min" />
-    </div>
-    <div>
       <div class="small">Top attribute</div>
       <input id="topAttr" type="text" value="z_max" />
+    </div>
+    <div>
+      <div class="small">Base attribute</div>
+      <input id="baseAttr" type="text" value="z_min" />
     </div>
   </div>
 
@@ -54,8 +54,7 @@
   </div>
 
   <div class="row">
-    <button id="loadBtn">Absolute Placement</button>
-    <button id="relativeBtn">Relative Height</button>
+    <button id="loadBtn">Load PMTiles (Relative Height)</button>
     <button id="flyBtn">Fly to Bounds</button>
   </div>
 
@@ -92,11 +91,10 @@
     bearing: -20
   });
 
-  function addVectorLayer(pmtilesUrl, sourceLayer, baseAttr, topAttr, color, opacity, useRelative=false) {
+  function addVectorLayer(pmtilesUrl, sourceLayer, baseAttr, topAttr, color, opacity) {
     const sourceId = 'pm-src';
     const layerId = 'pm-3d';
 
-    // Remove old layer/source
     if (map.getLayer(layerId)) map.removeLayer(layerId);
     if (map.getSource(sourceId)) map.removeSource(sourceId);
 
@@ -108,18 +106,14 @@
       url: `pmtiles://${pmtilesUrl}`
     });
 
-    const baseExpr = useRelative
-      ? 0
-      : ['coalesce', ['to-number', ['get', baseAttr]], 0];
-
-    const heightExpr = useRelative
-      ? ['max', 0,
-          ['-',
-            ['coalesce', ['to-number', ['get', topAttr]], 0],
-            ['coalesce', ['to-number', ['get', baseAttr]], 0]
-          ]
-        ]
-      : ['coalesce', ['to-number', ['get', topAttr]], 0];
+    // Relative height = z_max - z_min, base=0
+    const heightExpr = [
+      'max', 0,
+      ['-',
+        ['coalesce', ['to-number', ['get', topAttr]], 0],
+        ['coalesce', ['to-number', ['get', baseAttr]], 0]
+      ]
+    ];
 
     map.addLayer({
       id: layerId,
@@ -128,13 +122,12 @@
       'source-layer': sourceLayer,
       paint: {
         'fill-extrusion-color': color,
-        'fill-extrusion-base': baseExpr,
+        'fill-extrusion-base': 0,
         'fill-extrusion-height': heightExpr,
         'fill-extrusion-opacity': Number(opacity)
       }
     });
 
-    // Fit to bounds
     p.getHeader().then(h => {
       if (h && h.minLon !== undefined) {
         map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 40, duration: 800 });
@@ -142,41 +135,21 @@
     }).catch(() => {});
   }
 
-  // UI
-  const pmurlEl = document.getElementById('pmurl');
-  const sourcelayerEl = document.getElementById('sourcelayer');
-  const baseAttrEl = document.getElementById('baseAttr');
-  const topAttrEl = document.getElementById('topAttr');
-  const colorEl = document.getElementById('color');
-  const opacityEl = document.getElementById('opacity');
-
+  // UI hooks
   document.getElementById('loadBtn').onclick = () => {
     addVectorLayer(
-      pmurlEl.value.trim(),
-      sourcelayerEl.value.trim(),
-      baseAttrEl.value.trim(),
-      topAttrEl.value.trim(),
-      colorEl.value,
-      opacityEl.value,
-      false // absolute mode
-    );
-  };
-
-  document.getElementById('relativeBtn').onclick = () => {
-    addVectorLayer(
-      pmurlEl.value.trim(),
-      sourcelayerEl.value.trim(),
-      baseAttrEl.value.trim(),
-      topAttrEl.value.trim(),
-      colorEl.value,
-      opacityEl.value,
-      true // relative mode
+      document.getElementById('pmurl').value.trim(),
+      document.getElementById('sourcelayer').value.trim(),
+      document.getElementById('baseAttr').value.trim(),
+      document.getElementById('topAttr').value.trim(),
+      document.getElementById('color').value,
+      document.getElementById('opacity').value
     );
   };
 
   document.getElementById('flyBtn').onclick = async () => {
     try {
-      const p = new pmtiles.PMTiles(pmurlEl.value.trim());
+      const p = new pmtiles.PMTiles(document.getElementById('pmurl').value.trim());
       const h = await p.getHeader();
       if (h && h.minLon !== undefined) {
         map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 40, duration: 800 });
@@ -184,15 +157,14 @@
     } catch (e) {}
   };
 
-  // Auto-load defaults in absolute mode
+  // Auto-load defaults
   addVectorLayer(
-    pmurlEl.value,
-    sourcelayerEl.value,
-    baseAttrEl.value,
-    topAttrEl.value,
-    colorEl.value,
-    opacityEl.value,
-    false
+    document.getElementById('pmurl').value,
+    document.getElementById('sourcelayer').value,
+    document.getElementById('baseAttr').value,
+    document.getElementById('topAttr').value,
+    document.getElementById('color').value,
+    document.getElementById('opacity').value
   );
 </script>
 </body>
