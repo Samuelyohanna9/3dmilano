@@ -11,7 +11,7 @@
       position:absolute; top:10px; left:10px; z-index:10;
       background:rgba(255,255,255,.95); padding:10px 12px; border-radius:12px;
       font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 420px;
+      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 400px;
     }
     .row { display:flex; gap:6px; margin-top:6px; }
     .row > * { flex:1; }
@@ -32,14 +32,6 @@
       <div class="small">Source-layer</div>
       <input id="sourcelayer" type="text" value="a020102"/>
     </div>
-    <div>
-      <div class="small">Top attribute</div>
-      <input id="topAttr" type="text" value="z_max" />
-    </div>
-    <div>
-      <div class="small">Base attribute</div>
-      <input id="baseAttr" type="text" value="z_min" />
-    </div>
   </div>
 
   <div class="row">
@@ -54,7 +46,7 @@
   </div>
 
   <div class="row">
-    <button id="loadBtn">Load PMTiles (Relative Height)</button>
+    <button id="loadBtn">Load PMTiles</button>
     <button id="flyBtn">Fly to Bounds</button>
   </div>
 
@@ -91,7 +83,7 @@
     bearing: -20
   });
 
-  function addVectorLayer(pmtilesUrl, sourceLayer, baseAttr, topAttr, color, opacity) {
+  function addVectorLayer(pmtilesUrl, sourceLayer, color, opacity) {
     const sourceId = 'pm-src';
     const layerId = 'pm-3d';
 
@@ -106,12 +98,12 @@
       url: `pmtiles://${pmtilesUrl}`
     });
 
-    // Relative height = z_max - z_min, base=0
+    // Relative height = z_max - z_min
     const heightExpr = [
       'max', 0,
       ['-',
-        ['coalesce', ['to-number', ['get', topAttr]], 0],
-        ['coalesce', ['to-number', ['get', baseAttr]], 0]
+        ['coalesce', ['to-number', ['get', 'z_max']], 0],
+        ['coalesce', ['to-number', ['get', 'z_min']], 0]
       ]
     ];
 
@@ -140,8 +132,6 @@
     addVectorLayer(
       document.getElementById('pmurl').value.trim(),
       document.getElementById('sourcelayer').value.trim(),
-      document.getElementById('baseAttr').value.trim(),
-      document.getElementById('topAttr').value.trim(),
       document.getElementById('color').value,
       document.getElementById('opacity').value
     );
@@ -161,8 +151,6 @@
   addVectorLayer(
     document.getElementById('pmurl').value,
     document.getElementById('sourcelayer').value,
-    document.getElementById('baseAttr').value,
-    document.getElementById('topAttr').value,
     document.getElementById('color').value,
     document.getElementById('opacity').value
   );
