@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>MapLibre + PMTiles 3D Viewer</title>
+  <link href="vendor/maplibre-gl.css" rel="stylesheet"/>
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .panel {
+      position:absolute; top:10px; left:10px; z-index:10;
+      background:rgba(255,255,255,.95); padding:10px 12px; border-radius:12px;
+      font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      box-shadow:0 8px 24px rgba(0,0,0,.15); max-width: 420px;
+    }
+    .row { display:flex; gap:6px; margin-top:6px; }
+    .row > * { flex:1; }
+    .small { font-size:12px; color:#333 }
+    button { cursor:pointer; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel">
+  <div class="small"><strong>PMTiles URL</strong> (remote or local)</div>
+  <input id="pmurl" type="text"
+         value="https://pub-8df04077f4f24606b5b7907f35b3d396.r2.dev/A020102.pmtiles" />
+  <div class="row">
+    <div>
+      <div class="small">Source-layer</div>
+      <input id="sourcelayer" type="text" value="a020102"/>
+    </div>
+    <div>
+      <div class="small">Extrusion attribute</div>
+      <input id="heightAttr" type="text" value="height" />
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <div class="small">Base color</div>
+      <input id="color" type="color" value="#6cb7ff"/>
+    </div>
+    <div>
+      <div class="small">Opacity</div>
+      <input id="opacity" type="number" min="0" max="1" step="0.05" value="0.9"/>
+    </div>
+  </div>
+  <div class="row">
+    <button id="loadBtn">Load PMTiles</button>
+    <button id="flyBtn">Fly to Bounds</button>
+  </div>
+  <div class="small">Basemap: © OpenStreetMap contributors</div>
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script>
+  // Register pmtiles protocol
+  const protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', protocol.tile);
+
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      sources: {
+        // Simple, free OSM raster basemap
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors'
+        }
+      },
+      layers: [
+        { id: 'osm', type: 'raster', source: 'osm' }
+      ]
+    },
+    center: [9.22, 45.49],
+    zoom: 12,
+    pitch: 60,
+    bearing: -20
+  });
+
+  function addVectorLayer(pmtilesUrl, sourceLayer, heightAttr, color, opacity) {
+    const sourceId = 'pm-src';
+    const layerId = 'pm-3d';
+
+    // Remove old
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+
+    // Attach PMTiles object to protocol cache
+    const p = new pmtiles.PMTiles(pmtilesUrl);
+    protocol.add(p);
+
+    // Vector source via pmtiles://
+    map.addSource(sourceId, {
+      type: 'vector',
+      url: `pmtiles://${pmtilesUrl}`
+    });
+
+    // 3D extrusion layer
+    map.addLayer({
+      id: layerId,
+      type: 'fill-extrusion',
+      source: sourceId,
+      'source-layer': sourceLayer,
+      paint: {
+        'fill-extrusion-color': color,
+        'fill-extrusion-height': ['coalesce', ['to-number', ['get', heightAttr]], 0],
+        'fill-extrusion-opacity': Number(opacity)
+      }
+    });
+
+    // Fit to PMTiles bounds
+    p.getHeader().then(h => {
+      if (h && h.minLon !== undefined) {
+        map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 40, duration: 800 });
+      }
+    }).catch(() => {});
+  }
+
+  // UI hooks
+  document.getElementById('loadBtn').onclick = () => {
+    addVectorLayer(
+      document.getElementById('pmurl').value.trim(),
+      document.getElementById('sourcelayer').value.trim(),
+      document.getElementById('heightAttr').value.trim(),
+      document.getElementById('color').value,
+      document.getElementById('opacity').value
+    );
+  };
+
+  document.getElementById('flyBtn').onclick = async () => {
+    try {
+      const p = new pmtiles.PMTiles(document.getElementById('pmurl').value.trim());
+      const h = await p.getHeader();
+      if (h && h.minLon !== undefined) {
+        map.fitBounds([[h.minLon, h.minLat], [h.maxLon, h.maxLat]], { padding: 40, duration: 800 });
+      }
+    } catch (e) {}
+  };
+
+  // Auto-load defaults
+  addVectorLayer(
+    document.getElementById('pmurl').value,
+    document.getElementById('sourcelayer').value,
+    document.getElementById('heightAttr').value,
+    document.getElementById('color').value,
+    document.getElementById('opacity').value
+  );
+</script>
+</body>
+</html>
